@@ -13,6 +13,7 @@ for them, so we can use them to contribute towards measurements.
 from __future__ import annotations
 
 import re
+from typing import List, Tuple
 
 from homeassistant.components.bluetooth import MONOTONIC_TIME, BluetoothScannerDevice
 from homeassistant.const import STATE_HOME, STATE_NOT_HOME, STATE_UNAVAILABLE
@@ -32,8 +33,9 @@ from .const import (
     CONF_DEVICES,
     CONF_DEVTRACK_TIMEOUT,
     DEFAULT_DEVTRACK_TIMEOUT,
+    CONF_ENABLE_TRILATERATION,
 )
-
+from .trilateration import trilaterate
 
 class BermudaDevice(dict):
     """
@@ -80,24 +82,11 @@ class BermudaDevice(dict):
         self.last_seen: float = 0  # stamp from most recent scanner spotting. MONOTONIC_TIME
         self.scanners: dict[str, BermudaDeviceScanner] = {}
 
-        # BLE MAC addresses (https://www.bluetooth.com/specifications/core54-html/) can
-        # be differentiated by the top two MSBs of the 48bit MAC address. At our end at
-        # least, this means the first character of the MAC address in aa:bb:cc:dd:ee:ff
-        # I have no idea what the distinction between public and random is by bitwise ident,
-        # because the random addresstypes cover the entire address-space.
-        #
-        # - ?? Public
-        # - 0b00 (0x00 - 0x3F) Random Private Non-resolvable
-        # - 0b01 (0x40 - 0x7F) Random Private Resolvable (ie, IRK devices)
-        # - 0x10 (0x80 - 0xBF) ~* Reserved *~ (Is this where ALL Publics live?)
-        # - 0x11 (0xC0 - 0xFF) Random Static (may change on power cycle only)
-        #
-        # What we are really interested in tracking is IRK devices, since they rotate
-        # so rapidly (typically )
-        #
-        # A given device entry (ie, address) won't change, so we only update
-        # it once, and also only if it looks like a MAC address
-        #
+        # New attributes for trilateration
+        self.trilaterated_position: Tuple[float, float, float] | None = None
+        self.trilateration_accuracy: float | None = None
+
+        # BLE MAC address type identification logic...
         if self.address_type is BDADDR_TYPE_UNKNOWN:
             if self.address.count(":") != 5:
                 # Doesn't look like an actual MAC address
@@ -127,7 +116,6 @@ class BermudaDevice(dict):
         """
         Call after doing update_scanner() calls so that distances
         etc can be freshly smoothed and filtered.
-
         """
         for scanner in self.scanners.values():
             scanner.calculate_data()
@@ -145,6 +133,34 @@ class BermudaDevice(dict):
             # We are a device we track. Flag for set-up:
             self.create_sensor = True
 
+        # Perform trilateration if enabled
+        if self.options.get(CONF_ENABLE_TRILATERATION, False):
+            self.perform_trilateration()
+
+    def perform_trilateration(self):
+        """
+        Perform trilateration calculations using data from multiple scanners.
+        """
+        positions: List[Tuple[float, float, float]] = []
+        distances: List[float] = []
+
+        for scanner in self.scanners.values():
+            if scanner.rssi_distance is not None and hasattr(scanner, 'position'):
+                positions.append(scanner.position)
+                distances.append(scanner.rssi_distance)
+
+        if len(positions) >= 3:
+            try:
+                self.trilaterated_position = trilaterate(positions, distances)
+                if self.trilaterated_position:
+                    _LOGGER.debug(f"Trilaterated position for {self.address}: {self.trilaterated_position}")
+                else:
+                    _LOGGER.warning(f"Trilateration failed for {self.address}")
+            except Exception as e:
+                _LOGGER.error(f"Error during trilateration for {self.address}: {str(e)}")
+        else:
+            _LOGGER.debug(f"Not enough data for trilateration of {self.address}. Scanners with distance data: {len(positions)}")
+
     def update_scanner(self, scanner_device: BermudaDevice, discoveryinfo: BluetoothScannerDevice):
         """
         Add/Update a scanner entry on this device, indicating a received advertisement.
@@ -152,7 +168,6 @@ class BermudaDevice(dict):
         This gets called every time a scanner is deemed to have received an advert for
         this device. It only loads data into the structure, all calculations are done
         with calculate_data()
-
         """
         if format_mac(scanner_device.address) in self.scanners:
             # Device already exists, update it
@@ -182,7 +197,6 @@ class BermudaDevice(dict):
                 scanout = {}
                 for address, scanner in self.scanners.items():
                     scanout[address] = scanner.to_dict()
-                # FIXME: val is overwritten
-                val = scanout  # noqa
+                val = scanout
             out[var] = val
         return out

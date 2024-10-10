@@ -1,0 +1,8 @@
+    TODO / IDEAS coordinator.py:
+    - when we get to establishing a fix, we can apply a path-loss factor to
+      a calculated vector based on previously measured losses on that path.
+      We could perhaps also fine-tune that with real-time measurements from
+      fixed beacons to compensate for environmental factors.
+    - An "obstruction map" or "radio map" could provide field strength estimates
+      at given locations, and/or hint at attenuation by counting "wall crossings"
+      for a given vector/path.

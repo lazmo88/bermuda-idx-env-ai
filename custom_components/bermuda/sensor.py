@@ -48,6 +48,7 @@ async def async_setup_entry(
             entities.append(BermudaSensorRange(coordinator, entry, address))
             entities.append(BermudaSensorScanner(coordinator, entry, address))
             entities.append(BermudaSensorRssi(coordinator, entry, address))
+            entities.append(BermudaSensorTrilateration(coordinator, entry, address))
 
             for scanner in scanners:
                 entities.append(BermudaSensorScannerRange(coordinator, entry, address, scanner))
@@ -67,11 +68,6 @@ async def async_setup_entry(
     # Connect device_new to a signal so the coordinator can call it
     _LOGGER.debug("Registering device_new callback.")
     entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_DEVICE_NEW, device_new))
-
-    # Now we must tell the co-ord to do initial refresh, so that it will call our callback.
-    # This runs inside the event loop so should be fine as-is.
-    # Disabling as it seems to work ok without, and it might be cause of async race.
-    # await coordinator.async_config_entry_first_refresh()
 
 
 class BermudaSensor(BermudaEntity, SensorEntity):
@@ -300,3 +296,36 @@ class BermudaSensorScannerRangeRaw(BermudaSensorScannerRange):
         if distance is not None:
             return round(distance, 3)
         return None
+
+
+class BermudaSensorTrilateration(BermudaSensor):
+    """Sensor for trilaterated position of the device."""
+
+    @property
+    def unique_id(self):
+        return f"{self._device.unique_id}_trilateration"
+
+    @property
+    def name(self):
+        return "Trilaterated Position"
+
+    @property
+    def native_value(self):
+        if self._device.trilaterated_position:
+            return f"{self._device.trilaterated_position[0]:.2f}, {self._device.trilaterated_position[1]:.2f}, {self._device.trilaterated_position[2]:.2f}"
+        return None
+
+    @property
+    def device_class(self):
+        return "bermuda__trilateration"
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        attribs = super().extra_state_attributes or {}
+        if self._device.trilaterated_position:
+            attribs["x"] = round(self._device.trilaterated_position[0], 2)
+            attribs["y"] = round(self._device.trilaterated_position[1], 2)
+            attribs["z"] = round(self._device.trilaterated_position[2], 2)
+        if self._device.trilateration_accuracy is not None:
+            attribs["accuracy"] = round(self._device.trilateration_accuracy, 2)
+        return attribs

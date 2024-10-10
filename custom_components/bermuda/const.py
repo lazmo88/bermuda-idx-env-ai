@@ -141,6 +141,10 @@ DOCS[CONF_SMOOTHING_SAMPLES] = (
     " make for slower distance increases. 10 or 20 seems good."
 )
 
+# New configuration option for trilateration
+CONF_ENABLE_TRILATERATION, DEFAULT_ENABLE_TRILATERATION = "enable_trilateration", False
+DOCS[CONF_ENABLE_TRILATERATION] = "Enable trilateration calculations for compatible devices"
+
 # Defaults
 DEFAULT_NAME = DOMAIN
 
