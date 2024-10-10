@@ -15,7 +15,10 @@
   ];
 
   # Sets environment variables in the workspace
-  env = {};
+  env = {
+    GIT_COMMITTER_EMAIL="25498972+lazmo88@users.noreply.github.com";
+    GIT_AUTHOR_EMAIL="25498972+lazmo88@users.noreply.github.com";
+  };
   idx = {
     # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
     extensions = [
